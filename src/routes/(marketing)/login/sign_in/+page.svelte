@@ -4,20 +4,43 @@
   import { goto } from "$app/navigation"
   import { onMount } from "svelte"
   import { page } from "$app/stores"
+  import { authStore } from "$lib/auth/auth_store"
+
+  import { LoginService } from "$lib/auth/login_service"
 
   let { data } = $props()
   let { supabase } = data
 
+  let username = ""
+  let password = ""
+  let error = ""
+
+  let redirectAfterLogin: string | null = null
+
+  const loginService = new LoginService("http://localhost:8080/api")
+
+  const login = async (event) => {
+    event.preventDefault()
+    try {
+      await loginService.login(username, password)
+
+      // Redirect to the intended page or default to '/dashboard'
+      goto(redirectAfterLogin || "/dashboard")
+
+      // Clear redirectAfterLogin in the store
+      authStore.update((auth) => ({
+        ...auth,
+        redirectAfterLogin: null,
+      }))
+    } catch (e) {
+      error = e.message
+    }
+  }
+
   onMount(() => {
-    supabase.auth.onAuthStateChange((event) => {
-      // Redirect to account after successful login
-      if (event == "SIGNED_IN") {
-        // Delay needed because order of callback not guaranteed.
-        // Give the layout callback priority to update state or
-        // we'll just bounch back to login when /account tries to load
-        setTimeout(() => {
-          goto("/account")
-        }, 1)
+    authStore.subscribe((auth) => {
+      if (auth.isLoggedIn) {
+        goto("/dashboard")
       }
     })
   })
@@ -44,17 +67,19 @@
     <span>Email verified! Please sign in.</span>
   </div>
 {/if}
-<h1 class="text-2xl font-bold mb-6">Sign In</h1>
-<Auth
-  supabaseClient={data.supabase}
-  view="sign_in"
-  redirectTo={`${data.url}/auth/callback`}
-  providers={oauthProviders}
-  socialLayout="horizontal"
-  showLinks={false}
-  appearance={sharedAppearance}
-  additionalData={undefined}
-/>
+<form onsubmit={login}>
+  {#if error}
+    <p style="color: red">{error}</p>
+  {/if}
+  <input type="text" bind:value={username} placeholder="Username" required />
+  <input
+    type="password"
+    bind:value={password}
+    placeholder="Password"
+    required
+  />
+  <button type="submit">Login</button>
+</form>
 <div class="text-l text-slate-800 mt-4">
   <a class="underline" href="/login/forgot_password">Forgot password?</a>
 </div>
